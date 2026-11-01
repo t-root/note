@@ -1,0 +1,669 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Ghi chú</title>
+  <meta name="theme-color" content="#05060a">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Ghi chú">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #05060a; --surface: rgba(16, 20, 33, .72); --surface2: rgba(30, 38, 62, .6); --solid: #0d111d; --line: rgba(120, 160, 255, .16);
+      --text: #e6ecff; --muted: #7c88a8; --accent: #22d3ee; --accent2: #8b5cf6; --accent-ink: #04101a;
+      --grad: linear-gradient(135deg, #22d3ee, #8b5cf6);
+      --glow: 0 0 0 1px rgba(34, 211, 238, .35), 0 0 24px rgba(34, 211, 238, .18);
+      --danger: #ff5c7a; --ok: #34d399; --r: 16px; --tab: 56px;
+      --mono: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+      --sat: env(safe-area-inset-top, 0px); --sab: env(safe-area-inset-bottom, 0px);
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body { height: 100%; }
+    body { margin: 0; color: var(--text); display: flex; flex-direction: column; height: 100dvh; overflow: hidden; overscroll-behavior: none;
+      font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: radial-gradient(900px 420px at 90% -8%, rgba(139, 92, 246, .22), transparent 60%), radial-gradient(800px 460px at -10% 108%, rgba(34, 211, 238, .14), transparent 60%), var(--bg); }
+    h1, h2, p { margin: 0; }
+    button, input, textarea { font: inherit; color: inherit; }
+    button { cursor: pointer; }
+    [hidden] { display: none !important; }
+    .i { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+
+    /* App bar */
+    .appbar { display: flex; align-items: center; gap: 4px; padding: calc(var(--sat) + 8px) 12px 10px; position: relative; z-index: 20; min-height: calc(var(--sat) + 62px);
+      background: linear-gradient(180deg, rgba(5, 6, 10, .85), rgba(5, 6, 10, .4)); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+    .appbar::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 1px; background: linear-gradient(90deg, transparent, rgba(34, 211, 238, .5), rgba(139, 92, 246, .5), transparent); }
+    .appbar .ttl { flex: 1; min-width: 0; padding-left: 4px; }
+    .appbar h1 { font-size: 24px; font-weight: 800; letter-spacing: -.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      background: linear-gradient(90deg, #fff, #7ee7f7 60%, #b9a3ff); -webkit-background-clip: text; background-clip: text; color: transparent; }
+    .appbar .sub { color: var(--muted); font: 11px var(--mono); letter-spacing: .12em; text-transform: uppercase; }
+    .appbar .sub:empty { display: none; }
+    .ib { width: 44px; height: 44px; border: 0; border-radius: 14px; background: transparent; display: grid; place-items: center; flex: none; transition: .15s; }
+    .ib:active { background: var(--surface2); }
+    .ib.solid { background: var(--surface); border: 1px solid var(--line); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+    #syncBtn { border: 1px solid var(--line); color: var(--accent); }
+    #syncBtn.err { color: var(--danger); border-color: rgba(255, 92, 122, .5); box-shadow: 0 0 16px rgba(255, 92, 122, .25); }
+    #syncBtn.spin { box-shadow: var(--glow); }
+    #syncBtn.spin .i { animation: rot 1s linear infinite; }
+    @keyframes rot { to { transform: rotate(360deg); } }
+
+    /* Views */
+    .view { flex: 1; min-height: 0; position: relative; display: none; }
+    .view.on { display: block; }
+    #notesView::before { content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 0;
+      background-image: linear-gradient(rgba(120, 160, 255, .06) 1px, transparent 1px), linear-gradient(90deg, rgba(120, 160, 255, .06) 1px, transparent 1px); background-size: 34px 34px;
+      -webkit-mask-image: linear-gradient(#000, transparent 85%); mask-image: linear-gradient(#000, transparent 85%); }
+    .scroll { position: relative; z-index: 1; height: 100%; overflow-y: auto; padding: 4px 16px 110px; -webkit-overflow-scrolling: touch; }
+    .wrap { max-width: 720px; margin: 0 auto; }
+    .sec { font: 600 11px var(--mono); text-transform: uppercase; letter-spacing: .16em; color: var(--accent); opacity: .85; margin: 22px 4px 10px; }
+    .sec::before { content: "// "; color: var(--accent2); }
+    .row, .note { background: var(--surface); border: 1px solid var(--line); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-radius: var(--r); margin-bottom: 8px; cursor: pointer; transition: border-color .15s, box-shadow .15s, transform .1s; }
+    .row:hover, .note:hover { border-color: rgba(34, 211, 238, .45); box-shadow: 0 0 22px rgba(34, 211, 238, .12); }
+    .row:active, .note:active { transform: scale(.985); border-color: var(--accent); }
+    .row { display: flex; align-items: center; gap: 12px; padding: 10px 6px 10px 12px; min-height: 62px; }
+    .row .ico { width: 40px; height: 40px; border-radius: 12px; color: var(--accent); display: grid; place-items: center; flex: none;
+      background: linear-gradient(135deg, rgba(34, 211, 238, .16), rgba(139, 92, 246, .16)); border: 1px solid rgba(34, 211, 238, .28); box-shadow: inset 0 0 12px rgba(34, 211, 238, .08); }
+    .row .txt { flex: 1; min-width: 0; }
+    .row .t { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .row .s { color: var(--muted); font: 12px var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
+    .note { padding: 14px 8px 12px 16px; display: flex; gap: 8px; align-items: flex-start; border-left: 2px solid var(--accent2); }
+    .note .txt { flex: 1; min-width: 0; }
+    .note .t { font-weight: 600; overflow-wrap: anywhere; }
+    .note .b { color: var(--muted); font-size: 14px; margin-top: 4px; white-space: pre-wrap; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+    .photos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+    .photos button { padding: 0; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; aspect-ratio: 1; background: var(--surface2); display: block; transition: .15s; }
+    .photos button:active { border-color: var(--accent); box-shadow: var(--glow); transform: scale(.97); }
+    .photos img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .photos button { position: relative; }
+    .photos .play { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
+    .photos .play span { width: 38px; height: 38px; border-radius: 50%; background: rgba(5, 6, 10, .62); border: 1px solid rgba(34, 211, 238, .65); display: grid; place-items: center; color: #fff; box-shadow: 0 0 14px rgba(34, 211, 238, .45); }
+    .photos .play .i { width: 18px; height: 18px; margin-left: 2px; }
+    #viewer video { max-width: 100%; max-height: 100%; background: #000; }
+    .empty { text-align: center; color: var(--muted); padding: 64px 24px; font-family: var(--mono); font-size: 14px; }
+    .empty .i { width: 52px; height: 52px; margin-bottom: 14px; stroke-width: 1.2; color: var(--accent); filter: drop-shadow(0 0 10px rgba(34, 211, 238, .5)); }
+    .fab { position: absolute; right: 18px; bottom: 18px; width: 58px; height: 58px; border-radius: 20px; border: 0; background: var(--grad); color: var(--accent-ink); display: grid; place-items: center; z-index: 30;
+      box-shadow: 0 0 0 1px rgba(255, 255, 255, .2) inset, 0 10px 30px rgba(34, 211, 238, .35), 0 0 44px rgba(139, 92, 246, .4); animation: breathe 3.2s ease-in-out infinite; }
+    @keyframes breathe { 50% { box-shadow: 0 0 0 1px rgba(255, 255, 255, .2) inset, 0 10px 36px rgba(34, 211, 238, .55), 0 0 60px rgba(139, 92, 246, .55); } }
+    .fab:active { transform: scale(.93); }
+    .fab .i { width: 28px; height: 28px; stroke-width: 2.4; }
+
+    /* Tên dài: thay "…" bằng chữ chạy qua lại */
+    .mq { display: inline-block; white-space: nowrap; will-change: transform; }
+    .mqon { text-overflow: clip !important; }
+    .appbar h1.mqw { background: none; }
+    .appbar h1 .mq { background: linear-gradient(90deg, #fff, #7ee7f7 60%, #b9a3ff); -webkit-background-clip: text; background-clip: text; color: transparent; }
+    @keyframes mq { 0%, 18% { transform: translateX(0); } 82%, 100% { transform: translateX(var(--d)); } }
+    @media (prefers-reduced-motion: reduce) { .mq { animation: none !important; } .mqon { text-overflow: ellipsis !important; } }
+
+    /* Tab bar (nổi, kính mờ) */
+    .tabbar { display: flex; margin: 0 14px calc(var(--sab) + 10px); padding: 0 6px; background: rgba(12, 16, 28, .78); border: 1px solid var(--line); border-radius: 22px; backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); position: relative; z-index: 20; box-shadow: 0 10px 30px rgba(0, 0, 0, .5); }
+    .tabbar button { flex: 1; height: var(--tab); border: 0; background: none; color: var(--muted); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font: 600 10px var(--mono); letter-spacing: .12em; text-transform: uppercase; position: relative; transition: color .15s; }
+    .tabbar button.on { color: var(--accent); }
+    .tabbar button.on .i { filter: drop-shadow(0 0 7px rgba(34, 211, 238, .7)); }
+    .tabbar button.on::after { content: ""; position: absolute; top: 0; left: 30%; right: 30%; height: 2px; border-radius: 2px; background: var(--grad); box-shadow: 0 0 10px var(--accent); }
+
+    /* Map */
+    #map { position: absolute; inset: 0; background: #0a0e18; }
+    #mapView { --h: 132px; }
+    #mapView.open { --h: 58%; }
+    .leaflet-container { font: inherit; }
+    .leaflet-tile-pane { filter: invert(1) hue-rotate(188deg) brightness(.92) contrast(.95) saturate(.75); }
+    .leaflet-popup-content-wrapper, .leaflet-popup-tip { background: rgba(12, 16, 28, .92); color: var(--text); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 0 24px rgba(34, 211, 238, .2); backdrop-filter: blur(10px); }
+    .leaflet-popup-content { margin: 12px 16px; font-size: 15px; }
+    .leaflet-popup-content a { color: var(--accent); font-weight: 600; text-decoration: none; }
+    .leaflet-control-attribution { font-size: 10px; background: rgba(5, 6, 10, .6) !important; color: var(--muted) !important; }
+    .leaflet-control-attribution a { color: var(--muted) !important; }
+    .pin span { display: block; width: 28px; height: 28px; background: var(--grad); border: 3px solid #05060a; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); box-shadow: 0 0 0 1px rgba(34, 211, 238, .6), 0 0 16px rgba(34, 211, 238, .8), 0 4px 10px rgba(0, 0, 0, .6); transition: transform .15s; }
+    .pin.on span { transform: rotate(-45deg) scale(1.3); background: linear-gradient(135deg, #f472b6, #fb923c); box-shadow: 0 0 0 1px rgba(244, 114, 182, .7), 0 0 22px rgba(244, 114, 182, .9); }
+    .pin.draft span { background: linear-gradient(135deg, #fde047, #fb923c); box-shadow: 0 0 18px rgba(253, 224, 71, .8); animation: bob 1.2s ease-in-out infinite; }
+    @keyframes bob { 50% { transform: rotate(-45deg) translate(2px, -2px); } }
+    .me { width: 16px; height: 16px; border-radius: 50%; background: #38bdf8; border: 3px solid #fff; box-shadow: 0 0 0 6px rgba(56, 189, 248, .25), 0 0 20px rgba(56, 189, 248, .8); }
+    #locate { position: absolute; top: 12px; right: 12px; z-index: 1000; color: var(--accent); }
+    #pickBar { position: absolute; left: 12px; right: 12px; bottom: calc(var(--h) + 12px); z-index: 1000; background: rgba(12, 16, 28, .88); border: 1px solid rgba(34, 211, 238, .4); border-radius: 18px; padding: 8px 8px 8px 16px; display: flex; align-items: center; gap: 8px; box-shadow: 0 0 28px rgba(34, 211, 238, .2); backdrop-filter: blur(14px); transition: bottom .25s; }
+    #pickBar span { flex: 1; font: 600 12px var(--mono); letter-spacing: .04em; }
+    #mapSheet { position: absolute; left: 0; right: 0; bottom: 0; height: var(--h); z-index: 1000; background: rgba(10, 14, 26, .86); border: 1px solid var(--line); border-bottom: 0; border-radius: 24px 24px 0 0; box-shadow: 0 -10px 40px rgba(0, 0, 0, .6), 0 -1px 0 rgba(34, 211, 238, .25); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); display: flex; flex-direction: column; transition: height .25s ease; }
+    #grab { border: 0; background: none; height: 26px; width: 100%; display: grid; place-items: center; flex: none; }
+    .grab::before { content: ""; width: 44px; height: 4px; border-radius: 3px; background: var(--grad); opacity: .7; }
+    #grab { color: var(--accent); }
+    #grab .i { width: 26px; height: 26px; stroke-width: 2.4; transition: transform .25s; filter: drop-shadow(0 0 6px rgba(34, 211, 238, .6)); }
+    #mapView.open #grab .i { transform: rotate(180deg); }
+    .sheet-head { display: flex; gap: 8px; padding: 0 12px 10px; flex: none; }
+    .search { flex: 1; display: flex; align-items: center; gap: 8px; background: var(--surface2); border: 1px solid var(--line); border-radius: 14px; padding: 0 12px; color: var(--muted); }
+    .search:focus-within { border-color: rgba(34, 211, 238, .6); box-shadow: var(--glow); }
+    .search input { flex: 1; min-width: 0; border: 0; background: none; outline: none; padding: 12px 0; color: var(--text); }
+    #placeList { flex: 1; overflow-y: auto; padding: 0 12px calc(var(--sab) + 12px); }
+    .pill { background: var(--grad); color: var(--accent-ink); border: 0; border-radius: 14px; padding: 0 16px; font-weight: 800; box-shadow: 0 0 20px rgba(34, 211, 238, .3); }
+
+    /* Sheets / dialogs */
+    dialog.sheet { margin: auto auto 0; width: 100%; max-width: 560px; border: 1px solid var(--line); border-bottom: 0; border-radius: 24px 24px 0 0; background: rgba(10, 14, 26, .94); color: var(--text); padding: 0 0 var(--sab); max-height: 92dvh; overflow: auto; backdrop-filter: blur(22px); -webkit-backdrop-filter: blur(22px); box-shadow: 0 -10px 60px rgba(34, 211, 238, .12); }
+    dialog.sheet[open] { animation: up .22s ease-out; }
+    @keyframes up { from { transform: translateY(40px); opacity: 0; } }
+    dialog::backdrop { background: rgba(2, 3, 8, .66); backdrop-filter: blur(3px); }
+    .grab { height: 26px; display: grid; place-items: center; }
+    .pad { padding: 0 18px 18px; display: grid; gap: 12px; }
+    .pad h2 { font-size: 20px; font-weight: 800; letter-spacing: -.01em; }
+    label { display: block; font: 600 11px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+    .field input, .field textarea { width: 100%; background: rgba(30, 38, 62, .5); border: 1px solid var(--line); border-radius: 12px; padding: 13px 14px; outline: none; font-size: 16px; transition: .15s; }
+    .field input:focus, .field textarea:focus { border-color: rgba(34, 211, 238, .7); box-shadow: var(--glow); }
+    .field textarea { min-height: 180px; resize: vertical; }
+    .hint { font: 12px var(--mono); min-height: 18px; margin-top: 6px; color: var(--muted); }
+    .hint.error { color: var(--danger); } .hint.ok { color: var(--ok); }
+    .btn { border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; font-weight: 600; background: var(--surface2); display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; transition: .15s; }
+    .btn:active { border-color: var(--accent); }
+    .btn.primary { background: var(--grad); color: var(--accent-ink); border: 0; font-weight: 800; box-shadow: 0 0 24px rgba(34, 211, 238, .3); }
+    .btns { display: grid; grid-template-columns: 1fr 1.6fr; gap: 10px; }
+    .menu { display: grid; gap: 4px; padding: 0 10px 12px; }
+    .menu button { border: 0; background: none; display: flex; align-items: center; gap: 14px; padding: 14px 10px; border-radius: 12px; text-align: left; font-weight: 500; }
+    .menu button .i { color: var(--accent); }
+    .menu button:active { background: var(--surface2); }
+    .menu button.danger, .menu button.danger .i { color: var(--danger); }
+    .menu-title { padding: 0 20px 6px; color: var(--muted); font: 600 11px var(--mono); letter-spacing: .12em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    dialog#viewer { width: 100%; max-width: none; height: 100dvh; max-height: none; margin: 0; border: 0; border-radius: 0; background: #020308; color: #fff; padding: 0; }
+    dialog#viewer[open] { display: flex; flex-direction: column; }
+    #viewer .bar { display: flex; align-items: center; gap: 2px; padding: calc(var(--sat) + 6px) 8px 6px; border-bottom: 1px solid var(--line); }
+    #viewer .bar .nm { flex: 1; min-width: 0; font: 600 13px var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 6px; }
+    #viewer .ib:active { background: #1a2038; }
+    #viewer .img { flex: 1; min-height: 0; display: grid; place-items: center; padding-bottom: var(--sab); }
+    #viewer img { max-width: 100%; max-height: 100%; object-fit: contain; }
+    .toast { position: fixed; left: 50%; bottom: calc(var(--tab) + var(--sab) + 34px); transform: translateX(-50%) translateY(20px); background: rgba(12, 16, 28, .92); color: var(--text); border: 1px solid rgba(34, 211, 238, .45); box-shadow: 0 0 24px rgba(34, 211, 238, .25); backdrop-filter: blur(12px); padding: 10px 16px; border-radius: 12px; font: 600 13px var(--mono); opacity: 0; pointer-events: none; transition: .25s; z-index: 3000; max-width: calc(100% - 32px); text-align: center; }
+    .toast.show { opacity: 1; transform: translateX(-50%); }
+
+    @media (min-width: 700px) {
+      dialog.sheet { margin: auto; border-radius: 24px; border-bottom: 1px solid var(--line); }
+      .photos { grid-template-columns: repeat(4, 1fr); }
+      .tabbar { max-width: 420px; align-self: center; width: 100%; }
+    }
+    @media (min-width: 900px) {
+      #mapSheet { left: 16px; top: 16px; bottom: 16px; right: auto; width: 360px; height: auto; border-radius: 20px; border-bottom: 1px solid var(--line); box-shadow: 0 8px 40px rgba(0, 0, 0, .55); }
+      #grab { display: none; }
+      #mapSheet .sheet-head { padding-top: 12px; }
+      #pickBar { left: 392px; right: auto; bottom: 16px; width: 420px; }
+    }
+  </style>
+</head>
+<body>
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+    <symbol id="i-note" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></symbol>
+    <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/></symbol>
+    <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21s7-6.2 7-11a7 7 0 0 0-14 0c0 4.8 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+    <symbol id="i-more" viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="19" r="1.6" fill="currentColor"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 21h14"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></symbol>
+    <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/></symbol>
+    <symbol id="i-locate" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="8"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+    <symbol id="i-map" viewBox="0 0 24 24"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2z"/><path d="M9 4v14M15 6v14"/></symbol>
+    <symbol id="i-notes" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="3"/><path d="M8 8h8M8 12h8M8 16h5"/></symbol>
+    <symbol id="i-ext" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></symbol>
+    <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m6 15 6-6 6 6"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.5v15l12-7.5z" fill="currentColor"/></symbol>
+    <symbol id="i-sync" viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.5-4M4 4v4h4M4 13a8 8 0 0 0 14.5 4M20 20v-4h-4"/></symbol>
+  </svg>
+
+  <header class="appbar">
+    <button class="ib" id="back" hidden aria-label="Quay lại"><svg class="i"><use href="#i-back"/></svg></button>
+    <div class="ttl"><h1 id="title">Ghi chú</h1><div class="sub" id="sub"></div></div>
+    <button class="ib" id="syncBtn" aria-label="Đồng bộ" title="Đồng bộ"><svg class="i"><use href="#i-sync"/></svg></button>
+  </header>
+
+  <section class="view on" id="notesView">
+    <div class="scroll"><div class="wrap" id="content"></div></div>
+    <button class="fab" id="fab" aria-label="Thêm"><svg class="i"><use href="#i-plus"/></svg></button>
+  </section>
+
+  <section class="view" id="mapView">
+    <div id="map"></div>
+    <button class="ib solid" id="locate" aria-label="Vị trí của tôi"><svg class="i"><use href="#i-locate"/></svg></button>
+    <div id="pickBar" hidden><span>Lưu địa điểm tại đây?</span><button class="pill" id="pickSave" style="padding:12px 16px">Lưu</button><button class="ib" id="pickCancel" aria-label="Bỏ"><svg class="i"><use href="#i-x"/></svg></button></div>
+    <div id="mapSheet">
+      <button id="grab" aria-label="Mở rộng hoặc thu gọn danh sách"><svg class="i"><use href="#i-chevron"/></svg></button>
+      <div class="sheet-head">
+        <label class="search"><svg class="i"><use href="#i-search"/></svg><input id="search" placeholder="Tìm địa điểm" enterkeyhint="search"></label>
+        <button class="pill" id="addPlace" aria-label="Thêm địa điểm"><svg class="i" style="stroke-width:2.4"><use href="#i-plus"/></svg></button>
+      </div>
+      <div id="placeList"></div>
+    </div>
+  </section>
+
+  <nav class="tabbar">
+    <button id="tabNotes" class="on"><svg class="i"><use href="#i-notes"/></svg>Ghi chú</button>
+    <button id="tabMap"><svg class="i"><use href="#i-map"/></svg>Bản đồ</button>
+  </nav>
+
+  <input id="upload" type="file" accept="image/*,video/*" multiple hidden>
+  <div class="toast" id="toast"></div>
+
+  <dialog class="sheet" id="unlock"><form class="pad" id="unlockForm" method="dialog" autocomplete="off">
+    <div class="grab" style="margin:0 -18px"></div>
+    <h2>Mở khóa</h2>
+    <p style="color:var(--muted);font-size:14px">Nhập mật khẩu để giải mã dữ liệu. Chỉ cần nhập một lần trên máy này.</p>
+    <div class="field"><label for="unlockPw">Mật khẩu</label><input id="unlockPw" type="password" autocomplete="current-password" enterkeyhint="go"><div id="unlockHint" class="hint error"></div></div>
+    <button type="submit" class="btn primary">Mở khóa</button>
+  </form></dialog>
+
+  <dialog class="sheet" id="actions"><div class="grab"></div><div class="menu-title" id="actionsTitle"></div><div class="menu" id="actionsMenu"></div></dialog>
+
+  <dialog class="sheet" id="editor"><form class="pad" id="editorForm" method="dialog" autocomplete="off">
+    <div class="grab" style="margin:0 -18px"></div>
+    <h2 id="editorTitle"></h2>
+    <div class="field" id="fLink"><label for="eLink">Link Google Maps hoặc tọa độ</label><input id="eLink" placeholder="Dán link hoặc 10.77, 106.70" spellcheck="false" autocapitalize="off" inputmode="url"><div id="linkStatus" class="hint"></div><button type="button" class="btn" id="useMe" style="margin-top:6px"><svg class="i"><use href="#i-locate"/></svg>Dùng vị trí hiện tại</button></div>
+    <div class="field"><label for="eName">Tên</label><input id="eName" required enterkeyhint="done"></div>
+    <div class="field" id="fText"><label for="eText">Nội dung</label><textarea id="eText"></textarea></div>
+    <div class="btns"><button type="button" class="btn" id="eCancel">Hủy</button><button type="submit" class="btn primary">Lưu</button></div>
+  </form></dialog>
+
+  <dialog id="viewer">
+    <div class="bar"><button class="ib" id="vClose" aria-label="Đóng"><svg class="i"><use href="#i-x"/></svg></button><div class="nm" id="vName"></div><button class="ib" id="vEdit" aria-label="Đổi tên"><svg class="i"><use href="#i-edit"/></svg></button><button class="ib" id="vDl" aria-label="Tải"><svg class="i"><use href="#i-download"/></svg></button><button class="ib" id="vDel" aria-label="Xóa" style="color:#ff6b6b"><svg class="i"><use href="#i-trash"/></svg></button></div>
+    <div class="img"><img id="vImg" alt=""><video id="vVid" controls playsinline hidden></video></div>
+  </dialog>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const $ = id => document.getElementById(id);
+    const ic = n => `<svg class="i"><use href="#i-${n}"/></svg>`;
+    // Tên quá dài thì chạy qua lại thay vì cắt bằng "…" (bỏ qua nếu người dùng bật giảm chuyển động).
+    function marquee(root = document) {
+      if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+      root.querySelectorAll('.row .t, .row .s, .appbar h1, .menu-title, #viewer .nm').forEach(el => {
+        let sp = el.firstElementChild && el.firstElementChild.classList.contains('mq') ? el.firstElementChild : null;
+        if (!sp) { sp = document.createElement('span'); sp.className = 'mq'; sp.textContent = el.textContent; el.textContent = ''; el.append(sp); el.classList.add('mqw'); }
+        if (!el.clientWidth) return; sp.style.animation = 'none';
+        const over = sp.offsetWidth - el.clientWidth;
+        if (over > 2) { sp.style.setProperty('--d', `-${over + 10}px`); sp.style.animation = `mq ${Math.max(5, over / 22 + 4)}s linear infinite alternate`; el.classList.add('mqon'); } else el.classList.remove('mqon');
+      });
+    }
+    let mqTimer; window.addEventListener('resize', () => { clearTimeout(mqTimer); mqTimer = setTimeout(() => marquee(), 200); });
+    // item: { id, type: 'folder'|'note'|'image'|'place', parent: id|'', name, text, lat, lng, blob, created }
+    let items = [], cwd = '', urls = [], viewing = null;
+    const now = () => Date.now();
+    const uid = () => now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const mapsUrl = p => `https://www.google.com/maps/search/?api=1&query=${p.lat},${p.lng}`;
+    let toastTimer; const toast = msg => { const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 2600); };
+
+    // ---- Dữ liệu nằm hoàn toàn trên GitHub: data/items.json (thông tin), data/img (ảnh gốc), data/thumb (ảnh nhỏ). Máy chỉ giữ bản tạm trong bộ nhớ. ----
+    const OWNER = 't-root', REPO = 'note', DATA = 'data/items.json', IMG = 'data/img/', THUMB = 'data/thumb/';
+    let token = '', loaded = false, loadError = '', pendingN = 0, refreshing = false, queue = Promise.resolve();
+    const blobs = new Map(); // id -> { full: Promise<Blob|null>, thumb: Promise<Blob|null> }
+    const gh = (p, o = {}) => fetch(`https://api.github.com/repos/${OWNER}/${REPO}/contents/${p}`, { cache: 'no-store', ...o, headers: { Accept: 'application/vnd.github+json', Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...(o.headers || {}) } });
+    const RAW = { Accept: 'application/vnd.github.raw+json' };
+    const b64 = u8 => { let t = ''; for (let i = 0; i < u8.length; i += 0x8000) t += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(t); };
+    async function ok(res) { if (res.ok) return res.json(); const d = await res.json().catch(() => ({})); throw new Error(d.message || res.statusText); }
+    // ---- Mã hóa: AES-GCM 256, khóa sinh từ mật khẩu (PBKDF2). Token GitHub nằm dưới dạng đã mã hóa "v1.<salt>.<dữ liệu>"; dữ liệu và ảnh trên GitHub đều là bản mã hóa. ----
+    // Mật khẩu chỉ nhập một lần trên mỗi máy và lưu trong localStorage của máy đó. Muốn đổi token: node encrypt-token.js <mật khẩu> <token> rồi dán kết quả vào TOKEN_ENC.
+    const TOKEN_ENC = 'v1.82VXakti/D4QAfopF73Rew==.RU5DMWXapFsP6mVxUnDmFHd+GQELHYqDMqWu+/jihyccH6wp5zlwgTJ4iZEslieK0dMtqXtc8lOkOhF/5db0qkq12A2wn9wOhWRC5dLhy8XSZzqRHWr0cdgBJTGS38TUthWfoUS1A2o/c8GOTj2lTQAL2cpih43JeXErCgA=';
+    const te = new TextEncoder(), td = new TextDecoder(), MAGIC = [69, 78, 67, 49], PW_KEY = 'note-pw', ITER = 600000; // MAGIC = "ENC1"
+    let cryptoKey = null;
+    const unb64 = t => Uint8Array.from(atob(t), c => c.charCodeAt(0));
+    const isEnc = u8 => u8.length > 16 && MAGIC.every((m, i) => u8[i] === m);
+    async function deriveKey(pw, salt) {
+      const base = await crypto.subtle.importKey('raw', te.encode(pw), 'PBKDF2', false, ['deriveKey']);
+      return crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations: ITER, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+    }
+    async function encBytes(u8) {
+      const iv = crypto.getRandomValues(new Uint8Array(12)), ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, cryptoKey, u8)), out = new Uint8Array(16 + ct.length);
+      out.set(MAGIC); out.set(iv, 4); out.set(ct, 16); return out;
+    }
+    async function decBytes(u8) { return new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: u8.slice(4, 16) }, cryptoKey, u8.slice(16))); }
+    document.querySelectorAll('dialog.sheet:not(#unlock)').forEach(d => d.addEventListener('click', e => { if (e.target === d) d.close(); }));
+    $('unlock').addEventListener('cancel', e => e.preventDefault());
+    function askPassword(msg) {
+      return new Promise(res => {
+        $('unlockHint').textContent = msg; $('unlockPw').value = ''; $('unlock').showModal();
+        $('unlockForm').onsubmit = e => { e.preventDefault(); const v = $('unlockPw').value; if (!v) return; $('unlock').close(); res(v); };
+      });
+    }
+    async function unlock() {
+      const [v, s64, c64] = TOKEN_ENC.split('.'); if (v !== 'v1' || !s64 || !c64) return false;
+      const salt = unb64(s64), blob = unb64(c64);
+      const tryPw = async pw => { try { cryptoKey = await deriveKey(pw, salt); token = td.decode(await decBytes(blob)); return !!token; } catch { cryptoKey = null; token = ''; return false; } };
+      const saved = localStorage.getItem(PW_KEY); if (saved && await tryPw(saved)) return true; localStorage.removeItem(PW_KEY);
+      for (let msg = '', pw; ; msg = 'Sai mật khẩu, thử lại.') { pw = await askPassword(msg); if (await tryPw(pw)) { localStorage.setItem(PW_KEY, pw); return true; } }
+    }
+    async function getRemote() {
+      const res = await gh(DATA); if (res.status === 404) return { sha: null, list: [], legacy: false };
+      const d = await ok(res); let u8;
+      if (d.content) u8 = unb64(d.content.replace(/\n/g, ''));
+      else { const r = await gh(DATA, { headers: RAW }); if (!r.ok) throw new Error('Không đọc được dữ liệu'); u8 = new Uint8Array(await r.arrayBuffer()); }
+      if (!u8.length) return { sha: d.sha, list: [], legacy: false };
+      if (isEnc(u8)) { let p; try { p = await decBytes(u8); } catch { throw new Error('Không giải mã được dữ liệu (sai mật khẩu?)'); } return { sha: d.sha, list: JSON.parse(td.decode(p) || '[]'), legacy: false }; }
+      return { sha: d.sha, list: JSON.parse(td.decode(u8) || '[]'), legacy: true };
+    }
+    // Mỗi lần ghi: đọc bản mới nhất trên GitHub, áp thay đổi lên đó rồi ghi lại (nên hai máy sửa cùng lúc không đè nhau).
+    async function commit(mutate) {
+      for (let a = 0; ; a++) {
+        const r = await getRemote(), list = mutate(r.list.filter(x => x.type !== 'tomb'));
+        const content = b64(await encBytes(te.encode(JSON.stringify(list))));
+        const res = await gh(DATA, { method: 'PUT', body: JSON.stringify({ message: 'cập nhật', content, ...(r.sha && { sha: r.sha }) }) });
+        if ((res.status === 409 || res.status === 422) && a < 3) continue; await ok(res); return;
+      }
+    }
+    const setBusy = () => $('syncBtn').classList.toggle('spin', pendingN > 0 || refreshing);
+    function enqueue(task) {
+      pendingN++; setBusy();
+      queue = queue.then(task).catch(e => { $('syncBtn').classList.add('err'); toast(`Lưu lỗi: ${e.message}`); }).finally(() => { pendingN--; setBusy(); if (!pendingN) refresh(); });
+    }
+    async function refresh(manual = false) {
+      if (!token || refreshing || pendingN) return; refreshing = true; setBusy(); $('syncBtn').classList.remove('err');
+      try { const r = await getRemote(); items = r.list.filter(x => x.type !== 'tomb'); loaded = true; loadError = ''; renderAll(); if (manual) toast('Đã cập nhật'); if (r.legacy) { toast('Đang mã hóa dữ liệu cũ…'); enqueue(encryptLegacy); } }
+      catch (e) { loadError = e.message; $('syncBtn').classList.add('err'); if (manual || !loaded) toast(`Không tải được: ${e.message}`); renderAll(); }
+      finally { refreshing = false; setBusy(); }
+    }
+    function saveItem(it) { const k = items.findIndex(i => i.id === it.id); if (k < 0) items.push(it); else items[k] = it; renderAll(); enqueue(() => commit(l => [...l.filter(x => x.id !== it.id), it])); }
+    async function putFile(path, blob) { const res = await gh(path, { method: 'PUT', body: JSON.stringify({ message: 'thêm ảnh', content: b64(await encBytes(new Uint8Array(await blob.arrayBuffer()))) }) }); if (!res.ok && res.status !== 422) await ok(res); }
+    async function delFiles(dir, ids) { const lr = await gh(dir.slice(0, -1)), files = lr.ok ? await lr.json() : []; for (const id of ids) { const f = files.find(x => x.name === id); if (f) await gh(dir + id, { method: 'DELETE', body: JSON.stringify({ message: 'xóa ảnh', sha: f.sha }) }); } }
+    async function fetchBlob(path) { try { const r = await gh(path, { headers: RAW }); if (!r.ok) return null; const u8 = new Uint8Array(await r.arrayBuffer()); return new Blob([isEnc(u8) ? await decBytes(u8) : u8]); } catch { return null; } }
+    function getBlob(id, kind) {
+      let e = blobs.get(id); if (!e) blobs.set(id, e = {});
+      if (!e[kind]) e[kind] = (async () => { let b = await fetchBlob((kind === 'thumb' ? THUMB : IMG) + id); if (!b && kind === 'thumb' && (byId(id) || {}).type !== 'video') b = await getBlob(id, 'full'); if (!b) delete e[kind]; return b; })();
+      return e[kind];
+    }
+    async function makeThumb(f) {
+      try { const bm = await createImageBitmap(f), k = Math.min(1, 360 / Math.max(bm.width, bm.height)), c = document.createElement('canvas'); c.width = Math.max(1, Math.round(bm.width * k)); c.height = Math.max(1, Math.round(bm.height * k)); c.getContext('2d').drawImage(bm, 0, 0, c.width, c.height); return (await new Promise(r => c.toBlob(r, 'image/jpeg', .72))) || f; } catch { return f; }
+    }
+    // Dữ liệu cũ chưa mã hóa trên GitHub: mã hóa lại từng file ảnh rồi ghi lại items.json (bản cũ vẫn còn trong lịch sử commit của GitHub).
+    async function encryptLegacy() {
+      for (const dir of [IMG, THUMB]) {
+        const lr = await gh(dir.slice(0, -1)); if (!lr.ok) continue;
+        for (const f of await lr.json()) {
+          const r = await gh(dir + f.name, { headers: RAW }); if (!r.ok) continue; const u8 = new Uint8Array(await r.arrayBuffer()); if (isEnc(u8)) continue;
+          await ok(await gh(dir + f.name, { method: 'PUT', body: JSON.stringify({ message: 'mã hóa', content: b64(await encBytes(u8)), sha: f.sha }) }));
+        }
+      }
+      await commit(l => l);
+    }
+    const uploadImage = async (id, full, thumb) => { await putFile(IMG + id, full); if (thumb !== full) await putFile(THUMB + id, thumb); };
+
+    const children = id => items.filter(i => i.parent === id);
+    const byId = id => items.find(i => i.id === id);
+    const places = () => items.filter(i => i.type === 'place');
+    function pathOf(id) { const out = []; while (id) { const it = byId(id); if (!it) break; out.unshift(it); id = it.parent; } return out; }
+    const byName = (a, b) => a.name.localeCompare(b.name, 'vi');
+
+    // ---- Dialog helpers ----
+    function actionSheet(title, entries) {
+      $('actionsTitle').textContent = title; const m = $('actionsMenu'); m.innerHTML = '';
+      for (const e of entries) { const b = document.createElement('button'); b.className = e.danger ? 'danger' : ''; b.innerHTML = ic(e.icon) + esc(e.label); b.onclick = () => { $('actions').close(); e.fn(); }; m.append(b); }
+      $('actions').showModal(); marquee($('actions'));
+    }
+
+    // ---- Tabs ----
+    const onMap = () => $('mapView').classList.contains('on');
+    const subText = () => { const n = children(cwd).length; return n ? `${n} mục` : ''; };
+    function showTab(name, fit = true) {
+      const isMap = name === 'map';
+      $('notesView').classList.toggle('on', !isMap); $('mapView').classList.toggle('on', isMap);
+      $('tabNotes').classList.toggle('on', !isMap); $('tabMap').classList.toggle('on', isMap);
+      $('title').textContent = isMap ? 'Bản đồ' : cwd ? byId(cwd).name : 'Ghi chú';
+      $('back').hidden = isMap || !cwd; $('sub').textContent = isMap ? `${places().length} địa điểm` : subText();
+      if (isMap) { map.invalidateSize(); if (fit) fitAll(); }
+      marquee();
+    }
+    $('tabNotes').onclick = () => showTab('notes'); $('tabMap').onclick = () => showTab('map');
+
+    // ---- Điều hướng thư mục (hỗ trợ nút Back của điện thoại) ----
+    function go(id) { cwd = id; history.pushState({ cwd: id }, ''); renderNotes(); }
+    window.addEventListener('popstate', e => { cwd = (e.state && e.state.cwd) || ''; if (onMap()) showTab('notes'); renderNotes(); });
+    new MutationObserver(() => marquee($('title').parentElement)).observe($('title'), { childList: true });
+    $('back').onclick = () => go(byId(cwd) ? byId(cwd).parent : '');
+
+    // ---- Ghi chú / ảnh / thư mục ----
+    function renderNotes() {
+      urls.forEach(u => URL.revokeObjectURL(u)); urls = [];
+      if (cwd && !byId(cwd)) cwd = '';
+      if (!onMap()) { $('title').textContent = cwd ? byId(cwd).name : 'Ghi chú'; $('back').hidden = !cwd; $('sub').textContent = subText(); }
+      const list = children(cwd), folders = list.filter(i => i.type === 'folder').sort(byName), notes = list.filter(i => i.type === 'note').sort(byName),
+        imgs = list.filter(i => i.type === 'image' || i.type === 'video').sort((a, b) => b.created - a.created), pls = list.filter(i => i.type === 'place').sort(byName);
+      const more = id => `<button class="ib" data-act="more" data-id="${id}" aria-label="Tùy chọn">${ic('more')}</button>`;
+      let h = '';
+      if (!loaded) h = `<div class="empty">${ic('sync')}<p>${loadError ? 'Không tải được: ' + esc(loadError) : 'Đang tải…'}</p></div>`;
+      else if (!list.length) h = `<div class="empty">${ic('folder')}<p>${cwd ? 'Thư mục trống' : 'Chưa có gì'}</p><p style="font-size:14px;margin-top:4px">Bấm nút + để thêm thư mục, ghi chú, ảnh hoặc địa điểm.</p></div>`;
+      if (folders.length) { h += '<div class="sec">Thư mục</div>'; for (const f of folders) { const n = children(f.id).length; h += `<div class="row" data-act="open" data-id="${f.id}"><div class="ico">${ic('folder')}</div><div class="txt"><div class="t">${esc(f.name)}</div><div class="s">${n} mục</div></div>${more(f.id)}</div>`; } }
+      if (notes.length) { h += '<div class="sec">Ghi chú</div>'; for (const n of notes) h += `<div class="note" data-act="open" data-id="${n.id}"><div class="txt"><div class="t">${esc(n.name)}</div>${n.text ? `<div class="b">${esc(n.text)}</div>` : ''}</div>${more(n.id)}</div>`; }
+      if (pls.length) { h += '<div class="sec">Địa điểm</div>'; for (const p of pls) h += `<div class="row" data-act="open" data-id="${p.id}"><div class="ico">${ic('pin')}</div><div class="txt"><div class="t">${esc(p.name)}</div><div class="s">${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}</div></div>${more(p.id)}</div>`; }
+      if (imgs.length) { h += '<div class="sec">Ảnh &amp; video</div><div class="photos">'; for (const im of imgs) h += `<button data-act="open" data-id="${im.id}" aria-label="${esc(im.name)}"><img data-thumb="${im.id}" alt="">${im.type === 'video' ? `<div class="play"><span>${ic('play')}</span></div>` : ''}</button>`; h += '</div>'; }
+      $('content').innerHTML = h; marquee($('content'));
+      $('content').querySelectorAll('img[data-thumb]').forEach(async img => { const b = await getBlob(img.dataset.thumb, 'thumb'); if (b && img.isConnected) { const u = URL.createObjectURL(b); urls.push(u); img.src = u; } });
+    }
+    $('content').addEventListener('click', e => {
+      const el = e.target.closest('[data-act]'); if (!el) return; const it = byId(el.dataset.id); if (!it) return;
+      if (el.dataset.act === 'more') itemMenu(it); else openItem(it);
+    });
+    function itemMenu(it) {
+      const e = [];
+      if (it.type === 'place') e.push({ icon: 'map', label: 'Xem trên bản đồ', fn: () => openItem(it) }, { icon: 'ext', label: 'Mở Google Maps', fn: () => window.open(mapsUrl(it), '_blank', 'noopener') });
+      if (it.type === 'image' || it.type === 'video') e.push({ icon: 'download', label: 'Tải về', fn: () => getBlob(it.id, 'full').then(b => b ? saveBlob(b, it.name) : toast('Không tải được tệp')) });
+      e.push({ icon: 'edit', label: it.type === 'note' || it.type === 'place' ? 'Sửa' : 'Đổi tên', fn: () => openEditor(it.type, it) }, { icon: 'trash', label: 'Xóa', danger: true, fn: () => remove(it) });
+      actionSheet(it.name, e);
+    }
+    function openItem(it) {
+      if (it.type === 'folder') go(it.id);
+      else if (it.type === 'image' || it.type === 'video') {
+        viewing = it; const vid = it.type === 'video';
+        $('vName').textContent = it.name; $('vImg').hidden = vid; $('vVid').hidden = !vid; $('vImg').removeAttribute('src'); $('vVid').removeAttribute('src');
+        $('viewer').showModal(); marquee($('viewer')); if (vid) toast('Đang tải video…');
+        getBlob(it.id, 'full').then(b => {
+          if (viewing !== it) return; if (!b) return toast('Không tải được tệp');
+          const u = URL.createObjectURL(vid ? new Blob([b], { type: it.mime || 'video/mp4' }) : b); $('viewer').dataset.url = u;
+          if (vid) { $('vVid').src = u; $('vVid').play().catch(() => {}); } else $('vImg').src = u;
+        });
+      }
+      else if (it.type === 'place') { showTab('map', false); focusPlace(it.id); }
+      else openEditor('note', it);
+    }
+    $('viewer').addEventListener('close', () => { if ($('viewer').dataset.url) URL.revokeObjectURL($('viewer').dataset.url); $('viewer').dataset.url = ''; $('vImg').removeAttribute('src'); $('vVid').pause(); $('vVid').removeAttribute('src'); $('vVid').load(); viewing = null; });
+    $('vClose').onclick = () => $('viewer').close();
+    $('vDl').onclick = () => { const it = viewing; if (it) getBlob(it.id, 'full').then(b => b ? saveBlob(b, it.name) : toast('Không tải được ảnh')); };
+    $('vEdit').onclick = () => { const it = viewing; $('viewer').close(); openEditor('image', it); };
+    $('vDel').onclick = async () => { const it = viewing; if (await remove(it)) $('viewer').close(); };
+    function saveBlob(blob, name) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000); }
+
+    async function remove(it) {
+      const ids = []; (function walk(x) { ids.push(x.id); children(x.id).forEach(walk); })(it);
+      if (!confirm(it.type === 'folder' && ids.length > 1 ? `Xóa thư mục "${it.name}" và ${ids.length - 1} mục bên trong?` : `Xóa "${it.name}"?`)) return false;
+      const imgIds = ids.filter(id => ['image', 'video'].includes(byId(id).type)); items = items.filter(i => !ids.includes(i.id)); renderAll(); toast('Đã xóa');
+      enqueue(async () => { await commit(l => l.filter(x => !ids.includes(x.id))); if (imgIds.length) { await delFiles(IMG, imgIds); await delFiles(THUMB, imgIds); } });
+      return true;
+    }
+
+    // ---- Thêm / sửa ----
+    let editing = null, draft = null;
+    function parseInput(text) {
+      text = text.trim(); if (!text) return null; let m, name = '';
+      const pn = text.match(/\/place\/([^/@?]+)/); if (pn) { try { name = decodeURIComponent(pn[1].replace(/\+/g, ' ')); } catch {} }
+      m = text.match(/!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/)
+        || text.match(/[?&](?:q|query|ll|destination|center)=(-?\d+(?:\.\d+)?)(?:,|%2C)\s*(-?\d+(?:\.\d+)?)/i)
+        || text.match(/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/)
+        || text.match(/^\s*(-?\d+(?:\.\d+)?)\s*[,;\s]\s*(-?\d+(?:\.\d+)?)\s*$/);
+      if (!m) return null; const lat = +m[1], lng = +m[2];
+      return Math.abs(lat) <= 90 && Math.abs(lng) <= 180 ? { lat, lng, name } : null;
+    }
+    function openEditor(type, item, preset = {}) {
+      editing = { item, type, parent: item ? item.parent : (preset.parent ?? cwd) }; draft = null;
+      const isPlace = type === 'place', isNote = type === 'note';
+      $('editorTitle').textContent = { folder: item ? 'Đổi tên thư mục' : 'Thư mục mới', note: item ? 'Sửa ghi chú' : 'Ghi chú mới', place: item ? 'Sửa địa điểm' : 'Địa điểm mới', image: 'Đổi tên ảnh', video: 'Đổi tên video' }[type];
+      $('fLink').hidden = !isPlace; $('fText').hidden = !isNote;
+      $('eName').value = item ? item.name : ''; $('eText').value = item ? item.text || '' : ''; $('linkStatus').textContent = ''; $('linkStatus').className = 'hint';
+      if (isPlace) { const p = item || preset; if (p.lat != null) { draft = { lat: p.lat, lng: p.lng }; $('eLink').value = `${p.lat}, ${p.lng}`; } else $('eLink').value = ''; }
+      $('editor').showModal(); if (isPlace && !draft) $('eLink').focus(); else if (!item || type !== 'note') $('eName').focus();
+    }
+    function setLinkStatus(msg, cls) { $('linkStatus').textContent = msg; $('linkStatus').className = 'hint ' + (cls || ''); }
+    // Link rút gọn (maps.app.goo.gl) cần theo chuyển hướng, trình duyệt không tự làm được (Google chặn CORS) nên nhờ Jina Reader lấy URL đầy đủ.
+    const SHORT_RE = /https?:\/\/(?:maps\.app\.goo\.gl|goo\.gl\/maps|g\.co\/kgs)\/\S+/i;
+    async function resolveShort(u) {
+      try {
+        const res = await fetch('https://r.jina.ai/' + u, { signal: AbortSignal.timeout(15000) }); if (!res.ok) return null;
+        const url = ((await res.text()).match(/Final URL:\s*(\S+)/) || [])[1]; if (!url) return null;
+        let r = parseInput(url); if (!r) { try { r = parseInput(decodeURIComponent(url)); } catch {} } return r;
+      } catch { return null; }
+    }
+    let linkSeq = 0;
+    $('eLink').addEventListener('input', async () => {
+      const text = $('eLink').value, seq = ++linkSeq; let r = parseInput(text); draft = r;
+      if (!r) {
+        const m = text.match(SHORT_RE);
+        if (m) {
+          setLinkStatus('Đang lấy tọa độ từ link rút gọn…'); r = await resolveShort(m[0]); if (seq !== linkSeq) return; draft = r;
+          const pre = text.slice(0, m.index).trim(); if (r && !r.name && pre) r.name = pre;
+        }
+      }
+      if (!r) return setLinkStatus(text.trim() ? (SHORT_RE.test(text) ? 'Không lấy được tọa độ từ link rút gọn (Jina lỗi hoặc quá chậm). Hãy mở link ra rồi copy link đầy đủ, hoặc dán tọa độ.' : 'Chưa đọc được tọa độ. Hãy dán link Google Maps đầy đủ hoặc tọa độ.') : '', 'error');
+      setLinkStatus(`Tọa độ: ${r.lat}, ${r.lng}`, 'ok'); if (r.name && !$('eName').value) $('eName').value = r.name;
+    });
+    $('useMe').onclick = () => {
+      if (!navigator.geolocation) return setLinkStatus('Thiết bị không hỗ trợ định vị.', 'error');
+      setLinkStatus('Đang lấy vị trí…');
+      navigator.geolocation.getCurrentPosition(p => { $('eLink').value = `${p.coords.latitude.toFixed(6)}, ${p.coords.longitude.toFixed(6)}`; $('eLink').dispatchEvent(new Event('input')); },
+        () => setLinkStatus('Không lấy được vị trí. Hãy cho phép quyền truy cập vị trí.', 'error'), { enableHighAccuracy: true, timeout: 15000 });
+    };
+    $('editorForm').addEventListener('submit', async e => {
+      e.preventDefault(); const { item, type, parent } = editing, name = $('eName').value.trim(); if (!name) return;
+      if (type === 'place' && !draft) return setLinkStatus('Cần link hoặc tọa độ hợp lệ.', 'error');
+      const it = item ? { ...item } : { id: uid(), type, parent, created: now() }; it.name = name;
+      if (type === 'note') it.text = $('eText').value.trim();
+      if (type === 'place') { it.lat = draft.lat; it.lng = draft.lng; }
+      $('editor').close(); clearPick(); saveItem(it); toast('Đang lưu…');
+      if (type === 'place' && onMap()) focusPlace(it.id, false);
+    });
+    $('eCancel').onclick = () => $('editor').close();
+
+    // ---- Nút + và upload ảnh ----
+    $('fab').onclick = () => actionSheet('Thêm vào đây', [
+      { icon: 'folder', label: 'Thư mục', fn: () => openEditor('folder') },
+      { icon: 'note', label: 'Ghi chú', fn: () => openEditor('note') },
+      { icon: 'image', label: 'Ảnh / video', fn: () => $('upload').click() },
+      { icon: 'pin', label: 'Địa điểm', fn: () => openEditor('place') },
+    ]);
+    // Ảnh lớn (>1,5 MB) được thu nhỏ còn tối đa 2048px để đồng bộ nhanh và đỡ tốn dung lượng.
+    async function shrink(f) {
+      if (f.size < 1.5e6 || !/^image\/(jpeg|png|webp)$/.test(f.type)) return f;
+      try {
+        const bm = await createImageBitmap(f), k = Math.min(1, 2048 / Math.max(bm.width, bm.height)), c = document.createElement('canvas');
+        c.width = Math.round(bm.width * k); c.height = Math.round(bm.height * k); c.getContext('2d').drawImage(bm, 0, 0, c.width, c.height);
+        const b = await new Promise(r => c.toBlob(r, 'image/jpeg', .85)); return b && b.size < f.size ? b : f;
+      } catch { return f; }
+    }
+    // Khung hình đầu của video làm ảnh nhỏ; nếu trình duyệt không đọc được thì dùng ảnh nền tối.
+    async function videoThumb(f) {
+      const draw = (src, w, h) => { const k = Math.min(1, 360 / Math.max(w, h)), c = document.createElement('canvas'); c.width = Math.max(1, Math.round(w * k)); c.height = Math.max(1, Math.round(h * k)); const g = c.getContext('2d'); if (src) g.drawImage(src, 0, 0, c.width, c.height); else { g.fillStyle = '#0d111d'; g.fillRect(0, 0, c.width, c.height); } return new Promise(r => c.toBlob(r, 'image/jpeg', .72)); };
+      const u = URL.createObjectURL(f), v = document.createElement('video');
+      try {
+        v.muted = true; v.playsInline = true; v.preload = 'auto'; v.src = u;
+        await new Promise((res, rej) => { v.onloadeddata = res; v.onerror = () => rej(new Error('video')); setTimeout(() => rej(new Error('timeout')), 8000); });
+        v.currentTime = isFinite(v.duration) ? Math.min(1, v.duration / 3) : 0; await new Promise(res => { v.onseeked = res; setTimeout(res, 3000); });
+        if (v.videoWidth) return await draw(v, v.videoWidth, v.videoHeight);
+      } catch {} finally { URL.revokeObjectURL(u); }
+      return await draw(null, 360, 202);
+    }
+    const MAX_VIDEO = 50 * 1024 * 1024;
+    async function addMedia(files) {
+      const all = [...files].filter(f => f.type.startsWith('image/') || f.type.startsWith('video/')); if (!all.length) return toast('Chỉ nhận ảnh và video');
+      let n = 0;
+      for (const f of all) {
+        const id = uid(); let full, thumb, it;
+        if (f.type.startsWith('video/')) {
+          if (f.size > MAX_VIDEO) { toast(`"${f.name}" lớn hơn 50 MB nên bỏ qua`); continue; }
+          full = f; thumb = await videoThumb(f); it = { id, type: 'video', parent: cwd, name: f.name || `video-${now()}`, mime: f.type, size: f.size, created: now() };
+        } else {
+          full = await shrink(f); thumb = await makeThumb(full); const base = f.name || `anh-${now()}.png`;
+          it = { id, type: 'image', parent: cwd, name: full === f ? base : base.replace(/\.\w+$/, '') + '.jpg', created: now() };
+        }
+        blobs.set(id, { full: Promise.resolve(full), thumb: Promise.resolve(thumb) }); items.push(it); renderAll(); n++;
+        enqueue(async () => { await uploadImage(id, full, thumb); await commit(l => [...l, it]); });
+      }
+      if (n) toast(`Đang tải lên ${n} tệp…`);
+    }
+    $('upload').onchange = e => { const f = e.target.files; addMedia(f).finally(() => { e.target.value = ''; }); };
+    document.addEventListener('dragover', e => e.preventDefault());
+    document.addEventListener('drop', e => { e.preventDefault(); if (!onMap() && e.dataTransfer.files.length) addMedia(e.dataTransfer.files); });
+    document.addEventListener('paste', e => { if (!onMap() && !$('editor').open && e.clipboardData.files.length) addMedia(e.clipboardData.files); });
+
+    // ---- Bản đồ ----
+    const map = L.map('map', { zoomControl: false, attributionControl: false }).setView([16, 106], 5);
+    L.control.attribution({ position: 'topleft', prefix: false }).addTo(map);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap' }).addTo(map);
+    const group = L.layerGroup().addTo(map); let markers = new Map(), activeId = null, pick = null, me = null;
+    const pinIcon = cls => L.divIcon({ className: 'pin ' + cls, html: '<span></span>', iconSize: [28, 28], iconAnchor: [14, 34], popupAnchor: [0, -34] });
+    function fitAll() { const ps = places(); if (ps.length) map.fitBounds(L.latLngBounds(ps.map(p => [p.lat, p.lng])).pad(.25), { maxZoom: 15, animate: false }); }
+    function setSheet(open) { $('mapView').classList.toggle('open', open); }
+    $('grab').onclick = () => setSheet(!$('mapView').classList.contains('open'));
+    $('search').addEventListener('focus', () => setSheet(true));
+    map.on('click', e => { setPick(+e.latlng.lat.toFixed(6), +e.latlng.lng.toFixed(6)); setSheet(false); });
+    function setPick(lat, lng) { clearPick(); pick = { lat, lng, mk: L.marker([lat, lng], { icon: pinIcon('draft') }).addTo(map) }; $('pickBar').hidden = false; }
+    function clearPick() { if (pick) map.removeLayer(pick.mk); pick = null; $('pickBar').hidden = true; }
+    $('pickCancel').onclick = clearPick;
+    $('pickSave').onclick = () => { if (pick) openEditor('place', null, { lat: pick.lat, lng: pick.lng, parent: cwd }); };
+    $('addPlace').onclick = () => openEditor('place', null, { parent: cwd });
+    $('locate').onclick = () => {
+      if (!navigator.geolocation) return toast('Thiết bị không hỗ trợ định vị');
+      navigator.geolocation.getCurrentPosition(p => { const ll = [p.coords.latitude, p.coords.longitude]; if (me) map.removeLayer(me); me = L.marker(ll, { icon: L.divIcon({ className: '', html: '<div class="me"></div>', iconSize: [16, 16] }), interactive: false }).addTo(map); map.flyTo(ll, Math.max(map.getZoom(), 16), { duration: .6 }); },
+        () => toast('Không lấy được vị trí. Hãy cho phép quyền truy cập vị trí.'), { enableHighAccuracy: true, timeout: 15000 });
+    };
+    function focusPlace(id, pan = true) {
+      const p = byId(id), mk = markers.get(id); if (!p || !mk) return;
+      if (activeId && markers.get(activeId)) markers.get(activeId).setIcon(pinIcon('')); activeId = id; mk.setIcon(pinIcon('on'));
+      setSheet(false); if (pan) map.flyTo([p.lat, p.lng], Math.max(map.getZoom(), 16), { duration: .6 }); mk.openPopup();
+    }
+    function renderMap() {
+      group.clearLayers(); markers = new Map(); const q = $('search').value.trim().toLowerCase(), list = $('placeList'); list.innerHTML = '';
+      const all = places(), shown = all.filter(p => !q || p.name.toLowerCase().includes(q));
+      if (onMap()) $('sub').textContent = `${all.length} địa điểm`;
+      for (const p of all) {
+        const mk = L.marker([p.lat, p.lng], { icon: pinIcon(p.id === activeId ? 'on' : '') }).addTo(group);
+        mk.bindPopup(`<b>${esc(p.name)}</b><br><a href="${mapsUrl(p)}" target="_blank" rel="noopener">Mở trong Google Maps</a>`, { closeButton: false });
+        mk.on('click', () => focusPlace(p.id, false)); markers.set(p.id, mk);
+      }
+      if (!shown.length) list.innerHTML = `<div class="empty" style="padding:28px 12px">${all.length ? 'Không có kết quả' : 'Chưa có địa điểm nào.<br>Bấm lên bản đồ hoặc nút + để thêm.'}</div>`;
+      for (const p of shown) {
+        const where = pathOf(p.parent).map(f => f.name).join(' / ');
+        const r = document.createElement('div'); r.className = 'row';
+        r.innerHTML = `<div class="ico">${ic('pin')}</div><div class="txt"><div class="t">${esc(p.name)}</div>${where ? `<div class="s">${esc(where)}</div>` : ''}</div><button class="ib" aria-label="Tùy chọn">${ic('more')}</button>`;
+        r.onclick = e => { if (e.target.closest('button')) itemMenu(p); else focusPlace(p.id); }; list.append(r);
+      }
+      marquee(list);
+    }
+    $('search').addEventListener('input', renderMap);
+    function renderAll() { renderNotes(); renderMap(); }
+
+    // ---- Chuyển dữ liệu cũ (nếu máy này từng lưu cục bộ) lên GitHub, xong thì xóa bản trên máy ----
+    async function migrateLocal() {
+      let old = [];
+      try {
+        if (indexedDB.databases && (await indexedDB.databases()).some(d => d.name === 'notes-app')) {
+          const db = await new Promise((res, rej) => { const r = indexedDB.open('notes-app'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+          if (db.objectStoreNames.contains('items')) old = await new Promise(res => { const g = db.transaction('items').objectStore('items').getAll(); g.onsuccess = () => res(g.result); g.onerror = () => res([]); });
+          db.close();
+        }
+        const ls = JSON.parse(localStorage.getItem('saved-places') || 'null');
+        if (Array.isArray(ls)) old.push(...ls.map(p => ({ id: p.id || uid(), type: 'place', parent: '', name: p.name, lat: p.lat, lng: p.lng, created: now() })));
+      } catch { return; }
+      const have = new Set(items.map(i => i.id)); old = old.filter(x => x.type !== 'tomb' && !have.has(x.id) && (x.type !== 'image' || x.blob));
+      if (old.length) {
+        toast(`Đang chuyển ${old.length} mục từ máy lên GitHub…`);
+        try {
+          for (const x of old) if (x.type === 'image') { const full = await shrink(x.blob); await uploadImage(x.id, full, await makeThumb(full)); }
+          const metas = old.map(({ blob, updated, ...m }) => m);
+          await commit(l => [...l, ...metas.filter(m => !l.some(x => x.id === m.id))]);
+        } catch (e) { return toast(`Chuyển dữ liệu lỗi: ${e.message}`); }
+      }
+      indexedDB.deleteDatabase('notes-app'); localStorage.removeItem('saved-places'); if (old.length) await refresh();
+    }
+
+    // ---- Khởi động ----
+    $('syncBtn').onclick = () => refresh(true);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
+    window.addEventListener('online', () => refresh());
+    (async () => {
+      history.replaceState({ cwd: '' }, ''); renderAll();
+      if (!(await unlock())) { loadError = 'token mã hóa không hợp lệ'; $('syncBtn').classList.add('err'); return renderAll(); }
+      await refresh(); if (loaded) migrateLocal();
+    })();
+  </script>
+</body>
+</html>
