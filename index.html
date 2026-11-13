@@ -119,8 +119,6 @@
     #mapView { --h: 132px; }
     #mapView.open { --h: 58%; }
     .leaflet-container { font: inherit; }
-    .satbtn { margin-top: 70px; padding: 9px 13px; border-radius: 12px; border: 1px solid var(--line); background: rgba(12, 16, 28, .88); color: var(--text); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; backdrop-filter: blur(10px); }
-    .leaflet-container.sat .leaflet-tile-pane { filter: none; }
     .leaflet-tile-pane { filter: invert(1) hue-rotate(188deg) brightness(.92) contrast(.95) saturate(.75); }
     .leaflet-popup-content-wrapper, .leaflet-popup-tip { background: rgba(12, 16, 28, .92); color: var(--text); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 0 24px rgba(34, 211, 238, .2); backdrop-filter: blur(10px); }
     .leaflet-popup-content { margin: 12px 16px; font-size: 15px; }
@@ -862,32 +860,16 @@
       { url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', opt: { maxZoom: 19, attribution: '&copy; OpenStreetMap' } },
       { url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', opt: { maxZoom: 19, attribution: 'Tiles &copy; Esri' } },
     ];
-    let tileIdx = 0, tileLayer = null, tileErr = 0, satOn = localStorage.getItem('mapSat') === '1';
+    let tileIdx = 0, tileLayer = null, tileErr = 0;
     function useTiles(i) {
       if (tileLayer) map.removeLayer(tileLayer);
       tileIdx = i; tileErr = 0;
       tileLayer = L.tileLayer(TILE_SRC[i].url, TILE_SRC[i].opt);
-      if (!satOn) tileLayer.addTo(map);
+      tileLayer.addTo(map);
       tileLayer.on('tileload', () => { tileErr = 0; });
       tileLayer.on('tileerror', () => { if (++tileErr >= 4 && tileIdx < TILE_SRC.length - 1) useTiles(tileIdx + 1); });
     }
     useTiles(0);
-    const esri = (svc, o) => L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/' + svc + '/MapServer/tile/{z}/{y}/{x}', Object.assign({ maxZoom: 19 }, o));
-    const satLayer = L.layerGroup([esri('World_Imagery', { attribution: 'Tiles &copy; Esri' }), esri('Reference/World_Transportation'), esri('Reference/World_Boundaries_and_Places')]);
-    const SatCtl = L.Control.extend({
-      options: { position: 'topright' },
-      onAdd() {
-        const b = L.DomUtil.create('button', 'satbtn'); b.type = 'button';
-        L.DomEvent.disableClickPropagation(b);
-        const apply = () => {
-          if (satOn) { map.removeLayer(tileLayer); satLayer.addTo(map); } else { map.removeLayer(satLayer); tileLayer.addTo(map); }
-          map.getContainer().classList.toggle('sat', satOn); b.textContent = satOn ? '🗺️ Bản đồ' : '🛰️ Vệ tinh';
-        };
-        b.onclick = () => { satOn = !satOn; localStorage.setItem('mapSat', satOn ? '1' : '0'); apply(); };
-        apply(); return b;
-      }
-    });
-    new SatCtl().addTo(map);
     const group = L.layerGroup().addTo(map); let markers = new Map(), activeId = null, pick = null, me = null;
     const pinIcon = cls => L.divIcon({ className: 'pin ' + cls, html: '<span></span>', iconSize: [28, 28], iconAnchor: [14, 34], popupAnchor: [0, -34] });
     function fitAll() { const ps = places(); if (ps.length) map.fitBounds(L.latLngBounds(ps.map(p => [p.lat, p.lng])).pad(.25), { maxZoom: 15, animate: false }); }
