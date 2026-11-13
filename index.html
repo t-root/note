@@ -94,9 +94,9 @@
     #upFill { height: 100%; width: 0; background: var(--grad); transition: width .2s; }
     .picked { border-color: var(--accent) !important; box-shadow: 0 0 0 2px var(--accent), 0 0 22px rgba(34, 211, 238, .35) !important; position: relative; }
     .picked::after { content: "✓"; position: absolute; top: 6px; right: 8px; width: 22px; height: 22px; border-radius: 50%; background: var(--grad); color: var(--accent-ink); font-weight: 800; font-size: 14px; display: grid; place-items: center; z-index: 2; }
-    #selBar { position: absolute; left: 12px; right: 12px; bottom: 14px; z-index: 30; display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 18px; background: var(--surface2); border: 1px solid var(--accent); box-shadow: 0 10px 30px rgba(0, 0, 0, .5), var(--glow); }
-    #selBar .c { flex: 1; font-weight: 700; white-space: nowrap; }
-    #selBar button { border: 1px solid var(--line); border-radius: 12px; padding: 9px 12px; font-weight: 700; background: var(--surface); color: inherit; }
+    #selBar { position: absolute; left: 12px; right: 12px; bottom: 14px; z-index: 30; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; padding: 10px 12px; border-radius: 18px; background: var(--surface2); border: 1px solid var(--accent); box-shadow: 0 10px 30px rgba(0, 0, 0, .5), var(--glow); }
+    #selBar .c { flex: 1 1 100%; font-weight: 700; white-space: nowrap; }
+    #selBar button { flex: 1 1 auto; min-width: 64px; border: 1px solid var(--line); border-radius: 12px; padding: 9px 10px; font-weight: 700; background: var(--surface); color: inherit; text-align: center; white-space: nowrap; }
     #selBar button.danger { color: #ff6b81; }
 
     /* Tên dài: thay "…" bằng chữ chạy qua lại */
@@ -233,7 +233,7 @@
   <section class="view on" id="notesView">
     <div class="scroll"><div class="wrap" id="content"></div></div>
     <button class="fab" id="fab" aria-label="Thêm"><svg class="i"><use href="#i-plus"/></svg></button>
-    <div id="selBar" hidden><span class="c" id="selCount"></span><button id="selAll">Tất cả</button><button id="selMove">Di chuyển</button><button id="selDel" class="danger">Xóa</button><button id="selCancel">Hủy</button></div>
+    <div id="selBar" hidden><span class="c" id="selCount"></span><button id="selAll">Tất cả</button><button id="selDl">Tải về</button><button id="selMove">Di chuyển</button><button id="selDel" class="danger">Xóa</button><button id="selCancel">Hủy</button></div>
   </section>
 
   <section class="view" id="mapView">
@@ -670,6 +670,12 @@
     $('selAll').onclick = () => { if (!sel) return; const all = children(cwd).map(i => i.id); if (sel.size === all.length) sel.clear(); else all.forEach(id => sel.add(id)); renderNotes(); };
     $('selMove').onclick = () => { if (sel && sel.size) moveItems([...sel]); else toast('Chưa chọn mục nào'); };
     $('selDel').onclick = () => { if (sel && sel.size) removeMany([...sel].map(byId).filter(Boolean)); else toast('Chưa chọn mục nào'); };
+    $('selDl').onclick = () => { if (sel && sel.size) downloadMany([...sel].map(byId).filter(Boolean)); else toast('Chưa chọn mục nào'); };
+    async function downloadMany(list) {
+      const files = list.filter(it => ['image', 'video', 'file'].includes(it.type));
+      if (!files.length) return toast('Không có tệp để tải');
+      for (const it of files) { const b = await getBlob(it.id, 'full'); if (b) saveBlob(b, it.name); await new Promise(r => setTimeout(r, 300)); }
+    }
 
     // ---- Thêm / sửa ----
     let editing = null, draft = null;
