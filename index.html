@@ -161,6 +161,11 @@
     .field input, .field textarea { width: 100%; background: rgba(30, 38, 62, .5); border: 1px solid var(--line); border-radius: 12px; padding: 13px 14px; outline: none; font-size: 16px; transition: .15s; }
     .field input:focus, .field textarea:focus { border-color: rgba(34, 211, 238, .7); box-shadow: var(--glow); }
     .field textarea { min-height: 180px; resize: vertical; }
+    dialog#editor { max-width: none; width: 100%; height: 100dvh; max-height: none; margin: 0; border: 0; border-radius: 0; padding: var(--sat, env(safe-area-inset-top)) 0 var(--sab); }
+    dialog#editor[open] { display: flex; flex-direction: column; }
+    dialog#editor form.pad { flex: 1; min-height: 0; grid-template-rows: none; display: flex; flex-direction: column; padding-bottom: 18px; }
+    dialog#editor #fText { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+    dialog#editor #fText textarea { flex: 1; resize: none; min-height: 0; }
     .hint { font: 12px var(--mono); min-height: 18px; margin-top: 6px; color: var(--muted); }
     .hint.error { color: var(--danger); } .hint.ok { color: var(--ok); }
     .btn { border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; font-weight: 600; background: var(--surface2); display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; transition: .15s; }
