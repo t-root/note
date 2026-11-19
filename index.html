@@ -630,7 +630,7 @@
       if (it.type === 'link') e.push({ icon: 'ext', label: 'Mở liên kết', fn: () => window.open(it.url, '_blank', 'noopener') });
       if (['image', 'video', 'file'].includes(it.type)) e.push({ icon: 'download', label: 'Tải về', fn: () => getBlob(it.id, 'full').then(b => b ? saveBlob(b, it.name) : toast('Không tải được tệp')) });
       e.push({ icon: 'folder', label: 'Di chuyển', fn: () => moveItems([it.id]) }, { icon: 'notes', label: 'Chọn nhiều', fn: () => startSelect(it) });
-      e.push({ icon: 'edit', label: ['note', 'place', 'link'].includes(it.type) ? 'Sửa' : 'Đổi tên', fn: () => openEditor(it.type, it) }, { icon: 'trash', label: 'Xóa', danger: true, fn: () => remove(it) });
+      e.push({ icon: 'edit', label: ['note', 'place', 'link'].includes(it.type) || kindOf(it) === 'text' ? 'Sửa' : 'Đổi tên', fn: () => editFile(it) }, { icon: 'trash', label: 'Xóa', danger: true, fn: () => remove(it) });
       actionSheet(it.name, e);
     }
     function openItem(it) {
@@ -654,7 +654,13 @@
     $('viewer').addEventListener('close', () => { if ($('viewer').dataset.url) URL.revokeObjectURL($('viewer').dataset.url); $('viewer').dataset.url = ''; $('vImg').removeAttribute('src'); $('vVid').pause(); $('vVid').removeAttribute('src'); $('vVid').load(); $('vAud').pause(); $('vAud').removeAttribute('src'); $('vFrm').removeAttribute('src'); $('vTxt').textContent = ''; viewing = null; });
     $('vClose').onclick = () => $('viewer').close();
     $('vDl').onclick = () => { const it = viewing; if (it) getBlob(it.id, 'full').then(b => b ? saveBlob(b, it.name) : toast('Không tải được ảnh')); };
-    $('vEdit').onclick = () => { const it = viewing; $('viewer').close(); openEditor(it.type === 'file' ? 'file' : 'image', it); };
+    $('vEdit').onclick = () => { const it = viewing; if (!it) return; $('viewer').close(); editFile(it); };
+    // Sửa tệp: tệp văn bản mở cả nội dung để sửa; loại khác chỉ đổi tên.
+    async function editFile(it) {
+      if (kindOf(it) !== 'text') return openEditor(it.type, it);
+      const b = await getBlob(it.id, 'full'); if (!b) return toast('Không tải được tệp');
+      openEditor('file', it, { text: await b.text() });
+    }
     $('vDel').onclick = async () => { const it = viewing; if (await remove(it)) $('viewer').close(); };
     function saveBlob(blob, name) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000); }
 
@@ -705,12 +711,13 @@
       return Math.abs(lat) <= 90 && Math.abs(lng) <= 180 ? { lat, lng, name } : null;
     }
     function openEditor(type, item, preset = {}) {
-      editing = { item, type, parent: item ? item.parent : (preset.parent ?? cwd) }; draft = null;
+      editing = { item, type, parent: item ? item.parent : (preset.parent ?? cwd), text: preset.text }; draft = null;
       const isPlace = type === 'place', isNote = type === 'note' || type === 'newfile', isLink = type === 'link';
-      $('editorTitle').textContent = { folder: item ? 'Đổi tên thư mục' : 'Thư mục mới', note: item ? 'Sửa ghi chú' : 'Ghi chú mới', place: item ? 'Sửa địa điểm' : 'Địa điểm mới', link: item ? 'Sửa liên kết' : 'Liên kết mới', image: 'Đổi tên ảnh', video: 'Đổi tên video', file: 'Đổi tên tệp', newfile: 'Tạo tệp mới' }[type];
-      $('fLink').hidden = !isPlace; $('fText').hidden = !isNote; $('fUrl').hidden = !isLink;
+      const isFileText = type === 'file' && preset.text !== undefined;
+      $('editorTitle').textContent = isFileText ? 'Sửa nội dung tệp' : { folder: item ? 'Đổi tên thư mục' : 'Thư mục mới', note: item ? 'Sửa ghi chú' : 'Ghi chú mới', place: item ? 'Sửa địa điểm' : 'Địa điểm mới', link: item ? 'Sửa liên kết' : 'Liên kết mới', image: 'Đổi tên ảnh', video: 'Đổi tên video', file: 'Đổi tên tệp', newfile: 'Tạo tệp mới' }[type];
+      $('fLink').hidden = !isPlace; $('fText').hidden = !(isNote || isFileText); $('fUrl').hidden = !isLink;
       $('eName').value = item ? item.name : ''; $('eName').required = !isLink; $('eNameLabel').textContent = isLink ? 'Tiêu đề (không bắt buộc)' : 'Tên';
-      $('eUrl').value = item ? item.url || '' : (preset.url || ''); $('eText').value = item ? item.text || '' : ''; $('linkStatus').textContent = ''; $('linkStatus').className = 'hint';
+      $('eUrl').value = item ? item.url || '' : (preset.url || ''); $('eText').value = isFileText ? preset.text : (item ? item.text || '' : ''); $('linkStatus').textContent = ''; $('linkStatus').className = 'hint';
       if (isPlace) { const p = item || preset; if (p.lat != null) { draft = { lat: p.lat, lng: p.lng }; $('eLink').value = `${p.lat}, ${p.lng}`; } else $('eLink').value = ''; }
       $('editor').showModal(); if (isPlace && !draft) $('eLink').focus(); else if (isLink && !item) $('eUrl').focus(); else if (!item || type !== 'note') $('eName').focus();
     }
@@ -747,6 +754,14 @@
       e.preventDefault(); const { item, type, parent } = editing; let name = $('eName').value.trim();
       if (type === 'newfile') { // tạo tệp văn bản mới: tải lên như một tệp thường (mặc định đuôi .txt)
         if (!name) return; $('editor').close(); addMedia([new File([$('eText').value], /\.\w+$/.test(name) ? name : name + '.txt', { type: 'text/plain' })]); return;
+      }
+      if (type === 'file' && editing.text !== undefined) { // sửa nội dung tệp văn bản: ghi đè tệp trên GitHub rồi cập nhật tên/kích thước
+        if (!name) return; const bytes = te.encode($('eText').value);
+        if (bytes.length > 2e6) return toast('Nội dung quá lớn (tối đa 2 MB)');
+        const nit = { ...item, name, size: bytes.length };
+        $('editor').close(); items = items.map(x => x.id === nit.id ? nit : x); blobs.set(nit.id, { full: Promise.resolve(new Blob([bytes], { type: mimeOf(nit) || 'text/plain' })) }); renderAll(); toast('Đang lưu…');
+        enqueue(() => commitFiles({ put: [{ path: IMG + nit.id, getBytes: async () => bytes }], mutate: l => l.map(x => x.id === nit.id ? nit : x), message: 'sửa tệp' }));
+        return;
       }
       if (type === 'place' && !draft) return setLinkStatus('Cần link hoặc tọa độ hợp lệ.', 'error');
       let url;
